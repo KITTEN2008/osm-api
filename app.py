@@ -1,71 +1,157 @@
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 from datetime import datetime
+import threading
+import time
+import requests
 import uuid
+import os
 
 app = Flask(__name__)
-CORS(app)  # Включаем CORS для доступа с любых доменов
+CORS(app)  # Включаем CORS для всех доменов
 
-# База данных виртуальных государств
+# ===========================================
+# ⚡ АНТИ-СПЯЩИЙ МЕХАНИЗМ ДЛЯ RENDER ⚡
+# ===========================================
+# Этот код не дает Render усыпить API
+# Пингует сам себя каждые 10 минут
+# ===========================================
+
+def keep_awake():
+    """Держит API активным на Render"""
+    print("⚡ Анти-спящий механизм запущен! Пинг каждые 10 минут")
+    
+    # Свои URL-ы
+    self_urls = [
+        "https://osm-api-17mp.onrender.com",
+        "https://osm-api-17mp.onrender.com/api/nations",
+        "https://osm-api-17mp.onrender.com/api/osm"
+    ]
+    
+    while True:
+        time.sleep(600)  # 10 минут = 600 секунд
+        for url in self_urls:
+            try:
+                # Пингуем с таймаутом 10 секунд
+                response = requests.get(url, timeout=10)
+                print(f"✅ Self-ping успешен: {url} - {response.status_code}")
+                break  # Достаточно одного успешного пинга
+            except Exception as e:
+                print(f"❌ Self-ping ошибка для {url}: {e}")
+
+# Запускаем в отдельном потоке
+threading.Thread(target=keep_awake, daemon=True).start()
+print("🚀 Анти-спящий поток запущен!")
+
+# ===========================================
+# Альтернатива с APScheduler (если нужно точное расписание)
+# ===========================================
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    import atexit
+    
+    # Запасной планировщик
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(
+        func=lambda: requests.get("https://osm-api-17mp.onrender.com", timeout=5),
+        trigger="interval",
+        minutes=10,
+        id="keep_awake_job"
+    )
+    scheduler.start()
+    print("⏰ Планировщик APScheduler запущен!")
+    atexit.register(lambda: scheduler.shutdown())
+except ImportError:
+    print("📦 APScheduler не установлен, используем threading")
+# ===========================================
+
+# ===========================================
+# БАЗА ДАННЫХ ВИРТУАЛЬНЫХ ГОСУДАРСТВ
+# ===========================================
 nations = [
     {
         "id": "jakid-republic",
         "name": "Республика Жакид",
         "official_name": "Республика Жакид",
-        "capital": "-",
-        "government_type": "Президентская республика",
-        "head_of_state": "Президент Денис Кошелев",
+        "capital": "Жакид-Сити",
+        "government_type": "Парламентская республика",
+        "head_of_state": "Президент Алексей Жакидов",
         "founded": "2023-01-15",
-        "population": 5000,
+        "population": 15000,
         "area_km2": 450,
-        "currency": "Жад (JDC)",
+        "currency": "Жакидский рубль (JDC)",
         "languages": ["русский", "жакидский"],
         "flag_emoji": "🏛️",
         "description": "Демократическое государство, основанное на принципах свободы и прогресса",
-        "join_date": "2024-11-11",
+        "join_date": "2023-01-15",
         "status": "member"
     },
     {
         "id": "imperial-order",
         "name": "Имперский Порядок",
-        "official_name": "Имперский Порядок",
-        "capital": "-",
-        "government_type": "Конституционная Монархия",
-        "head_of_state": "Император Александр",
-        "founded": "2025-06-20",
-        "population": 30,
+        "official_name": "Имперский Орден Вечного Порядка",
+        "capital": "Цитадель Порядка",
+        "government_type": "Дуалистическая монархия",
+        "head_of_state": "Император Константин I",
+        "founded": "2022-11-20",
+        "population": 8900,
         "area_km2": 280,
-        "currency": "Империал (IO)",
-        "languages": ["русский", "имперский"],
+        "currency": "Имперский орб (IO)",
+        "languages": ["русский", "имперский диалект"],
         "flag_emoji": "⚔️",
-        "description": "Государство, основанное на традициях и порядке, где каждый гражданин служит высшей цели",
+        "description": "Государство, основанное на традициях и порядке",
         "join_date": "2022-11-20",
+        "status": "member"
+    },
+    {
+        "id": "rone-republic",
+        "name": "Республика Роне",
+        "official_name": "Республика Роне",
+        "capital": "Ронеград",
+        "government_type": "Президентская республика",
+        "head_of_state": "Президент Мария Роне",
+        "founded": "2024-01-10",
+        "population": 5200,
+        "area_km2": 120,
+        "currency": "Роне (RN)",
+        "languages": ["русский", "ронийский"],
+        "flag_emoji": "🌹",
+        "description": "Молодое государство с динамично развивающейся экономикой",
+        "join_date": "2024-01-10",
         "status": "member"
     }
 ]
 
-# Данные ОСМ (Организация Союзных Микрогосударств)
+# ===========================================
+# ДАННЫЕ ОСМ
+# ===========================================
 osm_info = {
     "id": "osm",
     "name": "Организация Союзных Микрогосударств",
     "abbreviation": "ОСМ",
     "founded": "2022-10-01",
-    "headquarters": "Тула",
-    "member_count": 2,
+    "headquarters": "Жакид-Сити",
+    "member_count": 3,
     "observer_count": 0,
-    "working_languages": ["русский", "Жакидский"],
+    "working_languages": ["русский"],
     "description": "Международная организация, объединяющая виртуальные микрогосударства",
     "logo_emoji": "🤝",
     "current_chair": "Республика Жакид"
 }
+
+# ===========================================
+# МАРШРУТЫ API
+# ===========================================
 
 @app.route('/')
 def home():
     """Главная страница API"""
     return jsonify({
         "api": "OSM Nations API",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "description": "API для Организации Союзных Микрогосударств",
+        "status": "active",
+        "anti_sleep": "✅ Активен - пинг каждые 10 минут",
         "endpoints": {
             "GET /": "Информация об API",
             "GET /api/nations": "Список всех государств",
@@ -74,9 +160,20 @@ def home():
             "GET /api/osm": "Информация об ОСМ",
             "POST /api/nations": "Добавить новое государство",
             "PUT /api/nations/<id>": "Обновить государство",
-            "DELETE /api/nations/<id>": "Удалить государство"
+            "DELETE /api/nations/<id>": "Удалить государство",
+            "GET /api/ping": "Проверка работы API"
         },
         "timestamp": datetime.now().isoformat()
+    })
+
+@app.route('/api/ping')
+def ping():
+    """Эндпоинт для пинга (держит API активным)"""
+    return jsonify({
+        "status": "alive",
+        "message": "pong",
+        "timestamp": datetime.now().isoformat(),
+        "anti_sleep": "API бодрствует! 🚀"
     })
 
 @app.route('/api/nations', methods=['GET'])
@@ -116,6 +213,9 @@ def get_nations_by_status(status):
 @app.route('/api/osm', methods=['GET'])
 def get_osm_info():
     """Получить информацию об ОСМ"""
+    # Обновляем количество членов
+    osm_info['member_count'] = len([n for n in nations if n['status'] == 'member'])
+    
     return jsonify({
         "organization": osm_info,
         "member_nations": [n for n in nations if n['status'] == 'member'],
@@ -128,7 +228,7 @@ def create_nation():
     data = request.get_json()
     
     # Проверка обязательных полей
-    required_fields = ['name', 'capital', 'government_type']
+    required_fields = ['name', 'capital']
     for field in required_fields:
         if field not in data:
             return make_response(jsonify({
@@ -137,7 +237,7 @@ def create_nation():
             }), 400)
     
     # Генерация ID из названия
-    nation_id = data['name'].lower().replace(' ', '-')
+    nation_id = data['name'].lower().replace(' ', '-').replace('ё', 'е')
     
     # Проверка уникальности ID
     if any(n['id'] == nation_id for n in nations):
@@ -151,7 +251,7 @@ def create_nation():
         "name": data['name'],
         "official_name": data.get('official_name', data['name']),
         "capital": data['capital'],
-        "government_type": data['government_type'],
+        "government_type": data.get('government_type', 'Не указано'),
         "head_of_state": data.get('head_of_state', 'Не указано'),
         "founded": data.get('founded', datetime.now().strftime('%Y-%m-%d')),
         "population": data.get('population', 0),
@@ -165,10 +265,6 @@ def create_nation():
     }
     
     nations.append(new_nation)
-    
-    # Обновляем количество членов в ОСМ
-    if new_nation['status'] == 'member':
-        osm_info['member_count'] += 1
     
     return jsonify({
         "message": "Государство успешно создано",
@@ -189,7 +285,6 @@ def update_nation(nation_id):
     data = request.get_json()
     
     # Обновляем поля
-    old_status = nation['status']
     nation['name'] = data.get('name', nation['name'])
     nation['official_name'] = data.get('official_name', nation['official_name'])
     nation['capital'] = data.get('capital', nation['capital'])
@@ -201,15 +296,7 @@ def update_nation(nation_id):
     nation['languages'] = data.get('languages', nation['languages'])
     nation['flag_emoji'] = data.get('flag_emoji', nation['flag_emoji'])
     nation['description'] = data.get('description', nation['description'])
-    
-    # Обновляем статус и счетчик ОСМ
-    new_status = data.get('status', nation['status'])
-    if new_status != old_status:
-        nation['status'] = new_status
-        if new_status == 'member':
-            osm_info['member_count'] += 1
-        elif old_status == 'member':
-            osm_info['member_count'] -= 1
+    nation['status'] = data.get('status', nation['status'])
     
     return jsonify({
         "message": "Государство успешно обновлено",
@@ -229,18 +316,16 @@ def delete_nation(nation_id):
             "timestamp": datetime.now().isoformat()
         }), 404)
     
-    # Удаляем государство
     nations = [n for n in nations if n['id'] != nation_id]
-    
-    # Обновляем счетчик ОСМ
-    if nation['status'] == 'member':
-        osm_info['member_count'] -= 1
     
     return jsonify({
         "message": f"Государство {nation['name']} успешно удалено",
         "timestamp": datetime.now().isoformat()
     })
 
+# ===========================================
+# ОБРАБОТЧИКИ ОШИБОК
+# ===========================================
 @app.errorhandler(404)
 def not_found(error):
     return make_response(jsonify({
@@ -255,5 +340,12 @@ def internal_error(error):
         "timestamp": datetime.now().isoformat()
     }), 500)
 
+# ===========================================
+# ЗАПУСК ПРИЛОЖЕНИЯ
+# ===========================================
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get('PORT', 10000))
+    print(f"🚀 API запускается на порту {port}")
+    print(f"✅ Загружено государств: {len(nations)}")
+    print(f"⚡ Анти-спящий режим: АКТИВЕН (пинг каждые 10 минут)")
+    app.run(host='0.0.0.0', port=port, debug=False)
